@@ -1,483 +1,384 @@
-# HireMeClub Backend — AWS Deployment & Migration Architecture Document
+# AWS SageMaker Deep Dive — MLA-C01 Study Guide
 
-**Project:** HireMeClub Website Backend  
-**Application:** Node.js / Express REST API  
-**Domain:** `api.hiremeclub.com`  
-**Region:** `ap-south-1` (Mumbai)  
-**Document Type:** Deployment Architecture & Migration Reference  
+> **Exam:** AWS Certified Machine Learning Engineer – Associate (MLA-C01)  
+> **Format:** 85 questions | 170 minutes | $150 USD  
+> **Question Types:** Multiple choice, Multiple select, Ordering, Matching, Case Study
 
 ---
 
-## Table of Contents
+## Exam Domains & Weightage
 
-1. [Overview](#1-overview)
-2. [Architecture Diagram](#2-architecture-diagram)
-3. [Infrastructure Components](#3-infrastructure-components)
-   - 3.1 [VPC & Networking](#31-vpc--networking)
-   - 3.2 [EC2 Instance](#32-ec2-instance)
-   - 3.3 [Application Load Balancer (ALB)](#33-application-load-balancer-alb)
-   - 3.4 [SSL/TLS & DNS](#34-ssltls--dns)
-   - 3.5 [Amazon ECR](#35-amazon-ecr)
-   - 3.6 [Amazon S3](#36-amazon-s3)
-   - 3.7 [CloudWatch Logging](#37-cloudwatch-logging)
-4. [Application Stack](#4-application-stack)
-5. [Containerization](#5-containerization)
-   - 5.1 [Dockerfile](#51-dockerfile)
-   - 5.2 [Docker Compose](#52-docker-compose)
-6. [CI/CD Pipeline](#6-cicd-pipeline)
-   - 6.1 [Pipeline Overview](#61-pipeline-overview)
-   - 6.2 [Build & Push Stage](#62-build--push-stage)
-   - 6.3 [Deploy Stage](#63-deploy-stage)
-   - 6.4 [Health Check & Rollback](#64-health-check--rollback)
-7. [Deployment Flow (Step-by-Step)](#7-deployment-flow-step-by-step)
-8. [Secrets & Environment Variables](#8-secrets--environment-variables)
-9. [Security Considerations](#9-security-considerations)
-10. [Migration Steps Performed](#10-migration-steps-performed)
-11. [Known Limitations & Recommendations](#11-known-limitations--recommendations)
+| Domain | Topic | Weight |
+|--------|-------|--------|
+| 1 | Data Preparation for Machine Learning | ~28% |
+| 2 | ML Model Development | ~26% |
+| 3 | Deployment and Orchestration of ML Workflows | ~22% |
+| 4 | ML Solution Monitoring, Maintenance, and Security | ~24% |
+
+> SageMaker is the **core service** across all 4 domains. Treat this as the "SageMaker certification."
 
 ---
 
-## 1. Overview
+## Phase 1 — Foundation (Week 1–2)
 
-This document describes the complete AWS deployment architecture for the HireMeClub backend API. The application is a Node.js/Express server containerized with Docker and deployed on an EC2 instance behind an Application Load Balancer (ALB). The entire deployment lifecycle is automated via a GitHub Actions CI/CD pipeline that builds Docker images, pushes them to Amazon ECR, and deploys to EC2 using AWS Systems Manager (SSM) — with no direct SSH access required.
+### Step 1: Understand the ML Lifecycle
+
+Before touching SageMaker, be solid on these concepts:
+
+- Supervised vs Unsupervised vs Reinforcement Learning
+- Regression vs Classification — and their evaluation metrics
+  - Regression: RMSE, MAE, R²
+  - Classification: Accuracy, Precision, Recall, F1, AUC-ROC
+- Overfitting vs Underfitting — regularization (L1/L2), dropout, early stopping
+- Train / Validation / Test split strategies
+- Feature engineering basics — normalization, encoding, imputation
+- Bias-variance tradeoff
+
+### Step 2: AWS Prerequisites
+
+Make sure you're comfortable with:
+
+- **IAM** — roles, policies, trust relationships (SageMaker needs IAM roles for almost everything)
+- **S3** — buckets, prefixes, versioning, lifecycle policies (SageMaker stores data/models here)
+- **VPC** — subnets, security groups, private endpoints (SageMaker runs inside VPCs)
+- **CloudWatch** — logs, metrics, alarms
+- **ECR** — container registries (custom training/inference containers)
 
 ---
 
-## 2. Architecture Diagram
+## Phase 2 — SageMaker Core Services (Week 3–5)
 
+Work through these in order. Each builds on the previous.
+
+---
+
+### 2.1 SageMaker Studio & Development Environments
+
+| Tool | What it is | When to use |
+|------|-----------|-------------|
+| **SageMaker Studio** | Web-based ML IDE — all-in-one | Primary workspace for everything |
+| **SageMaker Notebooks** | Managed Jupyter on EC2 | Data exploration, prototyping |
+| **SageMaker Canvas** | No-code ML interface | Business users, quick forecasting |
+| **SageMaker Domains** | Secure network + user management | Team/org-level setup |
+
+**Key things to know:**
+- Studio Domains define the network boundary and user profiles
+- Notebooks are billed per instance-hour — stop them when not in use
+- Canvas supports fraud detection, forecasting, churn prediction out of the box
+
+---
+
+### 2.2 Data Preparation
+
+#### SageMaker Data Wrangler
+- Visual, low-code data prep and feature engineering tool
+- Connects to S3, Athena, Redshift, EMR
+- Generates transformation code (PySpark / Pandas)
+- Exports to Feature Store, Processing Jobs, or Pipelines
+- **Exam tip:** Use Data Wrangler for interactive, GUI-based data prep. Use AWS Glue for large-scale ETL pipelines.
+
+#### SageMaker Processing Jobs
+- Run data preprocessing, feature engineering, or model evaluation as managed jobs
+- Supports custom scripts (Python, Spark)
+- Fully managed compute — you define instance type and count
+
+#### SageMaker Feature Store
+- Centralized store for ML features
+- **Online store** — low-latency, real-time inference lookups
+- **Offline store** — S3-backed, for training
+- Supports feature reuse across teams and models
+
+**Exam tip:** Know when to use online vs offline store. Online = real-time serving. Offline = batch training.
+
+---
+
+### 2.3 Model Training
+
+#### Training Jobs
+- Managed infrastructure for model training
+- You provide: algorithm/container, data location (S3), instance type, hyperparameters
+- Supports distributed training (data parallelism, model parallelism)
+- Output artifacts saved to S3
+
+#### Built-in Algorithms
+Know these well — the exam tests when to use each:
+
+| Algorithm | Type | Use Case |
+|-----------|------|----------|
+| XGBoost | Classification/Regression | Tabular data, most common |
+| Linear Learner | Classification/Regression | Fast, interpretable |
+| BlazingText | NLP | Text classification, Word2Vec |
+| Object Detection | CV | Bounding boxes in images |
+| Image Classification | CV | Image labeling |
+| Semantic Segmentation | CV | Pixel-level classification |
+| K-Means | Clustering | Unsupervised grouping |
+| PCA | Dimensionality Reduction | Feature reduction |
+| DeepAR | Forecasting | Time series with multiple related series |
+| Factorization Machines | Recommendation | Sparse data, click prediction |
+| IP Insights | Anomaly Detection | Unusual IP behavior |
+| Random Cut Forest (RCF) | Anomaly Detection | Streaming anomaly detection |
+
+#### Hyperparameter Tuning (HPO)
+- **Automatic Model Tuning (AMT)** — SageMaker's HPO service
+- Strategies: Bayesian (default, most efficient), Random, Grid, Hyperband
+- Define objective metric, parameter ranges, max jobs
+- **Warm start** — reuse previous tuning job results
+
+#### Distributed Training
+- **Data Parallelism** — split data across GPUs/instances, same model copy
+- **Model Parallelism** — split model across GPUs (for very large models)
+- SageMaker Distributed Training Library supports both
+
+---
+
+### 2.4 Model Deployment & Inference
+
+This is heavily tested. Know all 4 endpoint types cold.
+
+#### Real-Time Inference
+- Persistent endpoint, always on
+- Low latency (milliseconds)
+- Use for: interactive apps, APIs, real-time predictions
+- Supports auto-scaling
+
+#### Serverless Inference
+- No instance management, scales to zero
+- Cold start latency possible
+- Use for: spiky/unpredictable traffic, infrequent requests
+- Cost-effective for low-volume workloads
+
+#### Asynchronous Inference
+- Queued requests, results stored in S3
+- Use for: large payloads (up to 1GB), long processing times
+- Supports auto-scaling to zero when idle
+
+#### Batch Transform
+- Run predictions on entire datasets (no endpoint needed)
+- Input from S3, output to S3
+- Use for: offline scoring, preprocessing large datasets
+
+**Exam tip — Decision tree:**
 ```
-                          ┌─────────────────────────────────────────────────────┐
-                          │                    AWS Cloud (ap-south-1)            │
-                          │                                                       │
-  Internet                │  ┌──────────────────────────────────────────────┐   │
-  ─────────               │  │              VPC (10.0.0.0/16)               │   │
-  User/Client             │  │                                              │   │
-      │                   │  │  ┌──────────────────────────────────────┐   │   │
-      │  HTTPS (443)       │  │  │   Public Subnet 1 (10.0.1.0/24)     │   │   │
-      ▼                   │  │  │   AZ: ap-south-1a                    │   │   │
-  ┌───────────┐           │  │  │                                      │   │   │
-  │  Route 53 │           │  │  │  ┌──────────────────────────────┐   │   │   │
-  │  Hosted   │──────────►│  │  │  │  Application Load Balancer   │   │   │   │
-  │  Zone     │           │  │  │  │  (ALB)                       │   │   │   │
-  │api.hireme │           │  │  │  │  Listener: HTTPS 443         │   │   │   │
-  │club.com   │           │  │  │  │  SSL: ACM Certificate        │   │   │   │
-  └───────────┘           │  │  │  └──────────────┬───────────────┘   │   │   │
-                          │  │  │                 │                    │   │   │
-                          │  │  │  ┌──────────────▼───────────────┐   │   │   │
-                          │  │  │  │       Target Group           │   │   │   │
-                          │  │  │  │  Protocol: HTTP              │   │   │   │
-                          │  │  │  │  Port: 8080                  │   │   │   │
-                          │  │  │  └──────────────┬───────────────┘   │   │   │
-                          │  │  │                 │                    │   │   │
-                          │  │  │  ┌──────────────▼───────────────┐   │   │   │
-                          │  │  │  │   EC2 (t3.medium)            │   │   │   │
-                          │  │  │  │   Ubuntu                     │   │   │   │
-                          │  │  │  │   ┌──────────────────────┐   │   │   │   │
-                          │  │  │  │   │  Docker Container    │   │   │   │   │
-                          │  │  │  │   │  hiremeclub-app      │   │   │   │   │
-                          │  │  │  │   │  Port: 8080          │   │   │   │   │
-                          │  │  │  │   └──────────────────────┘   │   │   │   │
-                          │  │  │  └──────────────────────────────┘   │   │   │
-                          │  │  └──────────────────────────────────────┘   │   │
-                          │  │                                              │   │
-                          │  │  ┌──────────────────────────────────────┐   │   │
-                          │  │  │   Public Subnet 2 (ALB requirement)  │   │   │
-                          │  │  │   AZ: ap-south-1b                    │   │   │
-                          │  │  └──────────────────────────────────────┘   │   │
-                          │  └──────────────────────────────────────────────┘   │
-                          │                                                       │
-                          │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-                          │  │   ECR    │  │    S3    │  │   CloudWatch     │  │
-                          │  │ (Images) │  │ (Assets) │  │   (Logs)         │  │
-                          │  └──────────┘  └──────────┘  └──────────────────┘  │
-                          └─────────────────────────────────────────────────────┘
-
-  ┌──────────────────────────────────────────────────────────────────────────────┐
-  │                         GitHub Actions CI/CD                                  │
-  │  Push to dev ──► Build Docker Image ──► Push to ECR ──► Deploy via SSM      │
-  └──────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 3. Infrastructure Components
-
-### 3.1 VPC & Networking
-
-The network foundation is provisioned via CloudFormation (`vpc.yml`).
-
-| Resource | Details |
-|---|---|
-| VPC CIDR | `10.0.0.0/16` |
-| Public Subnet 1 | `10.0.1.0/24` — hosts EC2 + ALB |
-| Public Subnet 2 | Additional subnet in a second AZ (required by ALB for multi-AZ) |
-| Internet Gateway | Attached to VPC, enables outbound internet access |
-| Route Table | Default route `0.0.0.0/0` → Internet Gateway |
-| DNS Support | Enabled (`EnableDnsSupport: true`, `EnableDnsHostnames: true`) |
-
-The VPC CloudFormation stack exports `VPCId` and `SubnetId` as stack outputs for cross-stack reference.
-
-**Why a second public subnet?**  
-AWS ALB requires at least two subnets in different Availability Zones. A second public subnet was manually created in `ap-south-1b` to satisfy this requirement.
-
----
-
-### 3.2 EC2 Instance
-
-| Property | Value |
-|---|---|
-| Instance Type | `t3.medium` (2 vCPU, 4 GB RAM) |
-| OS | Ubuntu |
-| Placement | Public Subnet 1 |
-| IAM Role | Must have: `AmazonSSMManagedInstanceCore`, `AmazonEC2ContainerRegistryReadOnly`, `CloudWatchLogsFullAccess` |
-| Access Method | AWS SSM Session Manager (no SSH key required) |
-| Software | Docker, Docker Compose, AWS CLI |
-
-The EC2 instance runs the application as a Docker container managed by Docker Compose. The git repository is cloned at `/home/ubuntu/websit-backend` and the `.env` file is maintained there.
-
----
-
-### 3.3 Application Load Balancer (ALB)
-
-| Property | Value |
-|---|---|
-| Type | Application Load Balancer (internet-facing) |
-| Subnets | Public Subnet 1 + Public Subnet 2 (two AZs) |
-| Listener | HTTPS on port 443 with ACM SSL certificate |
-| Target Group | HTTP on port 8080 → EC2 instance |
-| Health Check | `GET /` on port 8080 |
-
-Traffic flow: `Client → Route 53 → ALB (HTTPS 443) → Target Group → EC2:8080 → Docker Container`
-
----
-
-### 3.4 SSL/TLS & DNS
-
-| Service | Configuration |
-|---|---|
-| AWS Certificate Manager (ACM) | SSL certificate issued for `api.hiremeclub.com` |
-| Route 53 Hosted Zone | `hiremeclub.com` |
-| DNS Record | `api.hiremeclub.com` → CNAME/A-alias → ALB DNS name |
-
-SSL is terminated at the ALB. Traffic between ALB and EC2 runs over HTTP on port 8080 within the VPC.
-
----
-
-### 3.5 Amazon ECR
-
-Docker images are stored in Amazon Elastic Container Registry.
-
-| Property | Value |
-|---|---|
-| Repository | Configured via `ECR_REPOSITORY` secret |
-| Image Tagging | `<registry>/<repo>:<git-sha>` + `latest` tag |
-| Build Cache | Registry-based cache using `<repo>:cache` tag |
-| Platform | `linux/amd64` (explicit for cross-platform builds) |
-
----
-
-### 3.6 Amazon S3
-
-The application uses S3 for file storage (logos and resumes), managed via the AWS SDK.
-
-| File | Purpose |
-|---|---|
-| `AWS/logoS3.js` | Employer logo uploads |
-| `AWS/resumeS3.js` | Candidate resume uploads |
-| `AWS/s3.js` | Shared S3 client configuration |
-
----
-
-### 3.7 CloudWatch Logging
-
-Container logs are shipped directly to CloudWatch via the Docker `awslogs` log driver.
-
-| Property | Value |
-|---|---|
-| Log Group | `/hiremeclub/prod/website-backend` |
-| Log Stream | `app` |
-| Region | `ap-south-1` |
-| Auto-create Group | Enabled (`awslogs-create-group: "true"`) |
-
-The CI/CD pipeline also ensures the log group exists before deployment (`aws logs create-log-group`).
-
----
-
-## 4. Application Stack
-
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 20 (Alpine) |
-| Framework | Express.js |
-| Database | MongoDB (via Mongoose) |
-| Auth | JWT + Cookie-based sessions |
-| File Storage | AWS S3 (multer-s3) |
-| Email | Nodemailer |
-| Process Manager | Tini (PID 1 signal handling) |
-| API Prefix | `/api/v1` |
-| Port | `8080` (configurable via `PORT` env var) |
-
-Key routes registered in `app.js`:
-- `/api/v1` — Candidate list, auth, employer auth, employer list, admin, CRM
-
----
-
-## 5. Containerization
-
-### 5.1 Dockerfile
-
-The Dockerfile uses a **multi-stage build** for a lean production image.
-
-```
-Stage 1 (builder):  node:20-alpine
-  └── npm ci --omit=dev   (production deps only)
-
-Stage 2 (production): node:20-alpine
-  ├── Install: wget (healthcheck), tini (PID 1)
-  ├── Create non-root user: appuser:appgroup
-  ├── Copy node_modules from builder
-  ├── Copy application source
-  ├── EXPOSE 8080
-  ├── ENTRYPOINT: tini
-  └── CMD: node app.js
+Need real-time response?
+  → Yes, always-on traffic → Real-Time Inference
+  → Yes, spiky/low traffic → Serverless Inference
+  → No, large payload or long processing → Async Inference
+  → No, bulk dataset scoring → Batch Transform
 ```
 
-Security practices applied:
-- Non-root user (`appuser`)
-- `no-new-privileges` security option
-- Minimal Alpine base image
-- Production-only dependencies
+#### Multi-Model Endpoints (MME)
+- Host multiple models on a single endpoint
+- Models loaded/unloaded dynamically from S3
+- Cost-efficient when models share the same framework
 
-### 5.2 Docker Compose
-
-`docker-compose.yml` manages the single application container.
-
-| Setting | Value |
-|---|---|
-| Container Name | `hiremeclub-app` |
-| Image | `${ECR_IMAGE}` (injected from `.env` by CI/CD) |
-| Restart Policy | `unless-stopped` |
-| Port Mapping | `8080:8080` |
-| Volume | `uploads_data:/app/uploads` (persistent uploads) |
-| Network | `hiremeclub-net` (bridge) |
-| Log Driver | `awslogs` → CloudWatch |
-| Health Check | `wget -qO- http://localhost:8080/` every 30s |
-| Stop Grace Period | 30 seconds (graceful shutdown) |
+#### Multi-Container Endpoints
+- Run different containers on one endpoint
+- Serial inference pipeline (container A → container B)
 
 ---
 
-## 6. CI/CD Pipeline
+### 2.5 MLOps — Pipelines, Registry & Automation
 
-Pipeline file: `.github/workflows/cicd.yml`
+#### SageMaker Pipelines
+- Native CI/CD for ML workflows
+- DAG-based pipeline definition (Python SDK)
+- Steps: Processing, Training, Tuning, Transform, Register, Condition, Lambda, Callback
+- Integrates with EventBridge for triggers
+- Tracks lineage automatically
 
-### 6.1 Pipeline Overview
+#### SageMaker Model Registry
+- Centralized catalog for trained models
+- **Model Groups** — collection of model versions for a specific use case
+- **Model Packages** — individual versioned model artifacts
+- Approval workflow: Pending → Approved → Rejected
+- Approved models can be auto-deployed via Pipelines
 
-```
-Trigger: Push to `dev` branch  OR  Manual (workflow_dispatch)
-         │
-         ▼
-┌─────────────────────┐
-│  Job 1: Build & Push │
-│  Runner: ubuntu-latest│
-│  1. Checkout code    │
-│  2. Configure AWS    │
-│  3. Login to ECR     │
-│  4. Docker Buildx    │
-│  5. Build & Push     │
-│     image to ECR     │
-│  Output: image_tag   │
-└──────────┬──────────┘
-           │  needs: build-and-push
-           ▼
-┌─────────────────────┐
-│  Job 2: Deploy       │
-│  Runner: ubuntu-latest│
-│  1. Configure AWS    │
-│  2. Build deploy     │
-│     script (Python)  │
-│  3. Send via SSM     │
-│  4. Poll for status  │
-└─────────────────────┘
-```
+#### SageMaker Projects
+- MLOps templates using Service Catalog
+- Pre-built templates for: build/train/deploy, third-party Git, A/B testing
+- Provisions CodePipeline, CodeBuild, CodeCommit automatically
 
-**Concurrency control:** `group: deploy-production` with `cancel-in-progress: true` ensures only one deployment runs at a time.
+#### SageMaker Experiments
+- Track, compare, and analyze training runs
+- Automatically captures metrics, parameters, artifacts
+- Integrates with Studio for visualization
 
 ---
 
-### 6.2 Build & Push Stage
+### 2.6 Monitoring & Observability
 
-- Uses `docker buildx` with `--platform linux/amd64` for consistent builds
-- Registry-based layer caching (`type=registry`) speeds up subsequent builds
-- Image is tagged with both the git commit SHA and `latest`
-- The commit SHA tag is passed as an output to the deploy job
+#### SageMaker Model Monitor
+Four types of monitoring — know all of them:
 
----
+| Monitor Type | What it detects |
+|-------------|----------------|
+| **Data Quality Monitor** | Feature drift vs training baseline |
+| **Model Quality Monitor** | Prediction quality degradation (requires ground truth) |
+| **Bias Drift Monitor** | Changes in model fairness over time |
+| **Feature Attribution Drift** | Changes in SHAP-based feature importance |
 
-### 6.3 Deploy Stage
+- Monitoring schedules run on a cron
+- Violations reported to CloudWatch and S3
+- Baseline created from training data using `suggest_baseline()`
 
-Deployment is executed via **AWS SSM Run Command** — no SSH, no bastion host.
-
-The deploy script runs 7 steps on the EC2 instance:
-
-| Step | Action |
-|---|---|
-| 1 | Login to ECR |
-| 2 | Ensure CloudWatch log group exists |
-| 3 | Save current running image tag for rollback |
-| 4 | Pull new Docker image from ECR |
-| 5 | Update `ECR_IMAGE` in `/home/ubuntu/websit-backend/.env` |
-| 6 | `docker compose up -d --pull never --remove-orphans` |
-| 7 | Health check loop (12 × 10s = 2 minutes max) |
-
-The script is base64-encoded before being sent via SSM to avoid shell escaping issues.
+#### SageMaker Clarify
+- Detects bias in data and models
+- Explains model predictions (SHAP values)
+- Pre-training bias metrics: Class Imbalance (CI), Difference in Proportions of Labels (DPL)
+- Post-training bias metrics: DPPL, DI, DCO, RD, DAR, DRR, AD, CDDPL, TE, FT
+- **Exam tip:** Clarify is used for explainability and bias detection. Model Monitor uses Clarify under the hood for bias/attribution drift.
 
 ---
 
-### 6.4 Health Check & Rollback
+### 2.7 Security
 
-After bringing up the new container, the pipeline polls Docker's health status for up to 2 minutes.
+These topics appear across all domains:
 
-```
-New container healthy?
-    YES → Prune dangling images → Deploy complete ✓
-    NO  → Rollback image available?
-              YES → Restore previous ECR_IMAGE in .env
-                    → docker compose up with old image
-                    → Poll rollback health (6 × 10s)
-                    → Healthy? → Exit 0 ✓
-                    → Not healthy? → Exit 1 ✗ (manual intervention)
-              NO  → Exit 1 ✗ (manual intervention required)
-```
+- **IAM Roles** — SageMaker execution role needs S3, ECR, CloudWatch permissions
+- **VPC** — Run training/inference inside a VPC for network isolation
+- **Encryption** — Data at rest (KMS), data in transit (TLS)
+- **SageMaker Role Manager** — Simplified role creation for ML personas
+- **Network Isolation** — Containers with no internet access
+- **Inter-Container Traffic Encryption** — For distributed training jobs
+- **SageMaker Ground Truth** — Data labeling with human reviewers + active learning
 
 ---
 
-## 7. Deployment Flow (Step-by-Step)
+## Phase 3 — Adjacent AWS Services (Week 6)
 
-This section documents the exact sequence of steps followed to set up the production environment.
+These appear alongside SageMaker in exam questions:
+
+| Service | Role in ML |
+|---------|-----------|
+| **Amazon Bedrock** | Managed GenAI — foundation models, fine-tuning, RAG |
+| **AWS Glue** | Large-scale ETL, data catalog, Spark jobs |
+| **Amazon Athena** | SQL queries on S3 data |
+| **Amazon Redshift** | Data warehouse, ML with Redshift ML |
+| **AWS Step Functions** | Orchestrate ML workflows (alternative to Pipelines) |
+| **Amazon Comprehend** | NLP — sentiment, entity recognition, PII redaction |
+| **Amazon Rekognition** | Image/video analysis |
+| **Amazon Forecast** | Managed time-series forecasting |
+| **Amazon Personalize** | Managed recommendation engine |
+| **AWS Lake Formation** | Data lake governance and access control |
+| **Amazon EventBridge** | Event-driven triggers for ML pipelines |
+| **AWS CodePipeline/CodeBuild** | CI/CD for model deployment |
+
+---
+
+## Phase 4 — Hands-On Practice (Week 7)
+
+Don't skip this — the exam has scenario-based questions that require practical understanding.
+
+### Labs to complete (in order):
+
+1. **Set up SageMaker Studio** — create domain, user profile, launch Studio
+2. **Data Wrangler flow** — import CSV from S3, apply transforms, export to notebook
+3. **Training Job** — train XGBoost on a tabular dataset (use built-in algorithm)
+4. **HPO Job** — run automatic model tuning on the trained model
+5. **Real-Time Endpoint** — deploy model, invoke with boto3
+6. **Batch Transform** — run batch predictions on a test dataset
+7. **Model Monitor** — set up data quality monitoring on an endpoint
+8. **SageMaker Pipeline** — build a pipeline with Processing → Training → Register steps
+9. **Model Registry** — register a model, approve it, deploy approved version
+10. **SageMaker Clarify** — run bias detection on training data
+
+### Free resources for hands-on:
+- [AWS SageMaker Immersion Day](https://catalog.workshops.aws/sagemaker-immersion-day) — free workshop labs
+- [AWS Skill Builder](https://skillbuilder.aws) — free tier includes SageMaker getting started courses
+- AWS Free Tier — SageMaker Studio has limited free usage for new accounts
+
+---
+
+## Phase 5 — Exam Prep (Week 8)
+
+### Review checklist
+
+- [ ] All 4 inference endpoint types and when to use each
+- [ ] Data Wrangler vs Glue vs Processing Jobs — when to use which
+- [ ] Feature Store online vs offline
+- [ ] All 4 Model Monitor types
+- [ ] SageMaker Pipelines step types
+- [ ] Model Registry approval workflow
+- [ ] Built-in algorithms and their use cases
+- [ ] Distributed training: data parallelism vs model parallelism
+- [ ] HPO strategies: Bayesian vs Random vs Grid vs Hyperband
+- [ ] Security: VPC, KMS, IAM roles, network isolation
+- [ ] Clarify bias metrics (pre-training vs post-training)
+- [ ] Bedrock basics: foundation models, fine-tuning, RAG with Knowledge Bases
+- [ ] Comprehend: sentiment, entities, PII detection
+
+### Practice exams
+- [AWS Skill Builder — Official Practice Question Set](https://skillbuilder.aws) (free, ~20 questions)
+- [Whizlabs MLA-C01](https://www.whizlabs.com) — full practice tests
+- [Udemy — Stephane Maarek / TutorialsDojo](https://www.udemy.com) — most popular prep courses
+- [TutorialsDojo Cheat Sheets](https://tutorialsdojo.com) — great for last-minute review
+
+### Exam day tips
+- Read every question fully — AWS loves "most cost-effective" or "least operational overhead" qualifiers
+- Eliminate obviously wrong answers first
+- For scenario questions: identify the bottleneck (data prep? training? inference? monitoring?) then match to the right SageMaker tool
+- Case study questions share context — read the scenario once, answer all related questions together
+- Flag uncertain questions and come back — 170 minutes is enough time
+
+---
+
+## Quick Reference — SageMaker Tool Decision Map
 
 ```
-Step 1: Network Setup
-  └── Deploy vpc.yml via CloudFormation
-      ├── VPC: 10.0.0.0/16
-      ├── Public Subnet 1: 10.0.1.0/24 (ap-south-1a)
-      ├── Internet Gateway + Route Table
-      └── Manually create Public Subnet 2 (ap-south-1b) for ALB
+Data is raw/unclean
+  → Small/medium, GUI preferred     → Data Wrangler
+  → Large scale ETL                 → AWS Glue
+  → Custom script                   → Processing Job
 
-Step 2: EC2 Provisioning
-  └── Launch t3.medium in Public Subnet 1
-      ├── Attach IAM role (SSM + ECR + CloudWatch)
-      ├── Install Docker, Docker Compose, AWS CLI
-      └── Clone repo: git clone <repo> /home/ubuntu/websit-backend
+Need to train a model
+  → Tabular data                    → XGBoost (built-in)
+  → Time series                     → DeepAR
+  → NLP                             → BlazingText
+  → Images                          → Image Classification / Object Detection
+  → Custom model                    → Bring your own container (BYOC)
 
-Step 3: Containerize & Test Locally on EC2
-  └── Build Docker image on EC2
-      ├── Create .env file with all environment variables
-      └── docker compose up -d (initial test)
+Need to tune hyperparameters
+  → Efficient search                → Bayesian (AMT)
+  → Parallel, fast                  → Hyperband
 
-Step 4: ECR Setup
-  └── Create ECR repository
-      └── Push initial image manually (or via pipeline)
+Need to deploy
+  → Always-on, low latency          → Real-Time Endpoint
+  → Spiky traffic, cost-sensitive   → Serverless Endpoint
+  → Large payload / async           → Async Endpoint
+  → Batch dataset                   → Batch Transform
 
-Step 5: Load Balancer Setup
-  ├── Create Target Group (HTTP, port 8080, health check: GET /)
-  ├── Register EC2 instance in Target Group
-  └── Create ALB (internet-facing)
-      ├── Attach both public subnets
-      └── Add HTTPS listener (port 443)
+Need to monitor
+  → Feature distribution shift      → Data Quality Monitor
+  → Prediction accuracy drop        → Model Quality Monitor
+  → Fairness changes                → Bias Drift Monitor
+  → Feature importance shift        → Feature Attribution Monitor
 
-Step 6: SSL Certificate
-  └── Request certificate in ACM for api.hiremeclub.com
-      └── Validate via DNS (Route 53 CNAME record auto-created)
+Need to explain predictions
+  → SHAP values / bias report       → SageMaker Clarify
 
-Step 7: DNS Configuration
-  └── Route 53 Hosted Zone: hiremeclub.com
-      └── Create A-record (alias) or CNAME:
-          api.hiremeclub.com → ALB DNS name
+Need to automate the full workflow
+  → ML-native DAG                   → SageMaker Pipelines
+  → General AWS orchestration       → Step Functions
 
-Step 8: CI/CD Pipeline
-  └── Add GitHub Secrets:
-      ├── AWS_ACCESS_KEY_ID
-      ├── AWS_SECRET_ACCESS_KEY
-      ├── AWS_REGION
-      ├── ECR_REGISTRY
-      ├── ECR_REPOSITORY
-      └── EC2_INSTANCE_ID
-  └── Push to dev branch → pipeline triggers automatically
+Need to manage model versions
+  → Versioning + approval           → Model Registry
 ```
 
 ---
 
-## 8. Secrets & Environment Variables
+## Recommended Study Schedule (8 Weeks)
 
-### GitHub Actions Secrets
-
-| Secret | Description |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | IAM user access key for CI/CD |
-| `AWS_SECRET_ACCESS_KEY` | IAM user secret key |
-| `AWS_REGION` | AWS region (e.g., `ap-south-1`) |
-| `ECR_REGISTRY` | ECR registry URL (e.g., `<account>.dkr.ecr.ap-south-1.amazonaws.com`) |
-| `ECR_REPOSITORY` | ECR repository name |
-| `EC2_INSTANCE_ID` | Target EC2 instance ID (e.g., `i-0abc123...`) |
-
-### Application `.env` on EC2
-
-The `.env` file at `/home/ubuntu/websit-backend/.env` must contain:
-
-| Variable | Description |
-|---|---|
-| `PORT` | Application port (default: `8080`) |
-| `MONGO_URL` | MongoDB connection string |
-| `ECR_IMAGE` | Auto-updated by CI/CD pipeline on each deploy |
-| JWT secrets, S3 bucket names, SMTP credentials, etc. | Application-specific config |
-
-> **Note:** `ECR_IMAGE` is automatically updated by the deploy script on every deployment. Do not manually edit this value.
+| Week | Focus |
+|------|-------|
+| 1 | ML fundamentals + AWS prerequisites (IAM, S3, VPC) |
+| 2 | SageMaker Studio, Notebooks, Canvas, Domains |
+| 3 | Data Wrangler, Processing Jobs, Feature Store |
+| 4 | Training Jobs, Built-in Algorithms, HPO, Distributed Training |
+| 5 | All 4 Inference types + Model Registry + Pipelines |
+| 6 | Model Monitor, Clarify, Security, Adjacent AWS services |
+| 7 | Hands-on labs (all 10 labs listed above) |
+| 8 | Practice exams, review weak areas, cheat sheet review |
 
 ---
 
-## 9. Security Considerations
-
-| Area | Implementation |
-|---|---|
-| No SSH access | EC2 accessed exclusively via AWS SSM |
-| Non-root container | Docker runs as `appuser` (non-root) |
-| No new privileges | `security_opt: no-new-privileges:true` |
-| SSL termination | HTTPS enforced at ALB via ACM certificate |
-| IAM least privilege | CI/CD IAM user should have only required permissions |
-| Secrets management | All secrets stored in GitHub Actions Secrets, never in code |
-| Image scanning | Consider enabling ECR image scanning on push |
-| VPC isolation | Application runs inside a dedicated VPC |
-
----
-
-## 10. Migration Steps Performed
-
-Summary of the complete migration from local/undeployed to production AWS:
-
-1. **VPC provisioned** via CloudFormation (`vpc.yml`) with parameterized CIDR, subnet, IGW, and route table
-2. **Second public subnet** manually created in a different AZ to satisfy ALB multi-AZ requirement
-3. **EC2 instance** (`t3.medium`) launched in the public subnet with appropriate IAM role
-4. **Git repository cloned** on EC2 at `/home/ubuntu/websit-backend`
-5. **Application dockerized** using multi-stage Dockerfile; tested with Docker Compose on EC2
-6. **Target Group** created pointing to EC2 on port 8080 with health check on `GET /`
-7. **ALB created** (internet-facing) spanning both public subnets, with HTTPS listener on port 443
-8. **SSL certificate** provisioned via ACM for `api.hiremeclub.com`, validated via Route 53 DNS
-9. **Route 53 DNS record** created: `api.hiremeclub.com` → ALB DNS name
-10. **ECR repository** created; Docker image pushed with git SHA tagging
-11. **CI/CD pipeline** configured in `.github/workflows/cicd.yml` with GitHub Secrets; automated build → push → deploy on every push to `dev` branch
-
----
-
-## 11. Known Limitations & Recommendations
-
-| Area | Current State | Recommendation |
-|---|---|---|
-| Single EC2 instance | No redundancy; single point of failure | Consider Auto Scaling Group with min 2 instances |
-| Public subnet for EC2 | EC2 is directly in a public subnet | Move EC2 to private subnet; ALB remains public |
-| No WAF | ALB has no Web Application Firewall | Add AWS WAF to ALB for DDoS/injection protection |
-| Manual .env management | `.env` file manually maintained on EC2 | Migrate secrets to AWS Secrets Manager or Parameter Store |
-| No private subnet | All resources in public subnets | Add private subnets + NAT Gateway for EC2 |
-| Single AZ EC2 | EC2 only in one AZ | Multi-AZ deployment for high availability |
-| No database backup automation | MongoDB backup not documented | Set up automated MongoDB Atlas backups or EBS snapshots |
-| ECR image retention | No lifecycle policy mentioned | Add ECR lifecycle policy to limit stored image count |
-| HTTP between ALB and EC2 | Internal traffic is unencrypted | Acceptable within VPC; optionally enable HTTPS on EC2 |
+*Sources: [AWS MLA-C01 Exam Guide](https://aws.amazon.com/certification/certified-machine-learning-engineer-associate/) | [Pluralsight MLA-C01 Guide](https://www.pluralsight.com/resources/blog/cloud/MLA-C01-AWS-machine-learning-engineer-associate) | [AWS SageMaker Training Guide](https://aws.amazon.com/blogs/training-and-certification/building-ml-excellence-a-practical-training-guide-for-amazon-sagemaker-ai/)*
